@@ -1,4 +1,5 @@
 # FollowEnglish
+<img width="1131" height="655" alt="image" src="https://github.com/user-attachments/assets/0e17eeaf-fca8-4fa2-82fa-447b853a8da1" />
 
 A local web app for English listening practice (intensive listening / shadowing). Upload a video, it's automatically transcribed into sentence-level English subtitles with accurate timestamps, and you can navigate/replay sentence-by-sentence entirely from the keyboard.
 
