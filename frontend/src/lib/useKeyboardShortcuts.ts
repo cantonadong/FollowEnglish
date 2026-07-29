@@ -6,6 +6,7 @@ interface Handlers {
   onNext: () => void;
   onReplay: () => void;
   onToggleSubtitle: () => void;
+  onToggleRepeat: () => void;
   onFontDecrease: () => void;
   onFontIncrease: () => void;
 }
@@ -43,6 +44,10 @@ export function useKeyboardShortcuts(handlers: Handlers, enabled = true) {
         case "KeyQ":
           e.preventDefault();
           handlers.onReplay();
+          break;
+        case "KeyR":
+          e.preventDefault();
+          handlers.onToggleRepeat();
           break;
         case "Minus":
         case "NumpadSubtract":

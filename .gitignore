@@ -8,6 +8,7 @@ backend/dist/
 # generated Windows resource / launcher binary (rebuilt by build.bat)
 launcher/*.syso
 /FollowEnglish.exe
+/FollowEnglish.exe~
 
 # large model file (downloaded separately, see docs/log.md)
 backend/models/*.bin
@@ -25,3 +26,7 @@ Thumbs.db
 
 # Claude Code local session state
 .claude/
+
+# never push these — per user instruction
+/need.txt
+/dev规范.txt

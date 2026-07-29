@@ -106,6 +106,7 @@ export function PlayerView({ videoSrc, sentences }: Props) {
     onNext: handleNext,
     onReplay: handleReplay,
     onToggleSubtitle: toggleSubtitle,
+    onToggleRepeat: toggleRepeat,
     onFontDecrease: fontDecrease,
     onFontIncrease: fontIncrease,
   });
@@ -173,7 +174,7 @@ export function PlayerView({ videoSrc, sentences }: Props) {
         />
 
         <div className="player-view__shortcuts-hint">
-          ← 上一句　空格/点击视频 播放/暂停　→ 下一句　Q 重播本句　M 字幕开关　- / = 字幕缩放
+          ← 上一句　空格/点击视频 播放/暂停　→ 下一句　Q 重播本句　R 单句循环开关　M 字幕开关　- / = 字幕缩放
         </div>
       </div>
 
