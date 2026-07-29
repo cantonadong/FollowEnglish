@@ -210,6 +210,14 @@ npm run dev
 
 之前只有系统托盘图标是自定义的（运行时用 `go:embed` 加载），exe 文件本身在资源管理器里显示的还是 Go 默认图标。用 `go-winres`（`go install github.com/tc-hib/go-winres@latest`）把同一份 `icon.ico` 编译成 Windows 资源文件（`.syso`），Go 编译器会自动把它链接进 exe，这样文件本身在资源管理器、桌面快捷方式等地方也会显示自定义图标（顺带设置了产品名称/文件描述）。已用 `System.Drawing.Icon.ExtractAssociatedIcon` 从编译好的 exe 里提取图标验证过，确实是自定义的蓝色图标。`build.bat` 已更新为每次构建都会自动重新生成这个资源文件，不用手动操作。
 
+## 已推送到 GitHub + 发布 Release
+
+- 仓库：https://github.com/cantonadong/FollowEnglish （public）
+- `.gitignore` 排除了：`node_modules`、`frontend/dist`/`backend/dist`（构建产物）、`launcher/*.syso`、`FollowEnglish.exe`、`backend/models/*.bin`（141MB模型，太大不适合进仓库）、`backend/uploads`/`backend/processed`（你上传的真实视频内容，**绝不能**进公开仓库）、`need.txt`/`dev规范.txt`（按你的要求，永远不上传）
+- **踩坑记录**：一开始误把 `need.txt`/`dev规范.txt` 也提交推送上去了，你直接在 GitHub 网页上把这两个文件删除了（对应两条"Delete xxx"的提交）。这导致我本地"改写提交历史再强推"的操作和你在远端的操作产生了分叉——处理方式是以你在远端的操作为准，把本地历史重置成和远端一致，再把后续改动（R键快捷键）正常提交推送上去，没有用强推覆盖你的操作
+- **Release**：`v1.0`，附件 `FollowEnglish-v1.0-win64.zip`（约146MB，压缩前192MB）——包含 `FollowEnglish.exe` + 编译后的 backend(`dist`+`node_modules`) + 编译后的 frontend(`dist`) + whisper 模型文件，解压后只要本机装了 Node.js 和 ffmpeg 就能直接双击运行，不需要额外下载模型或跑 `npm install`
+- 打包用的临时目录/压缩包都已清理，不占用项目目录空间
+
 ## 待处理事项
 
 - 目前所有模块均已开发完成并通过自测（含真实语音端到端验证），等待用户实际使用验证
