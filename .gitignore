@@ -1,0 +1,27 @@
+# dependencies
+node_modules/
+
+# build output
+frontend/dist/
+backend/dist/
+
+# generated Windows resource / launcher binary (rebuilt by build.bat)
+launcher/*.syso
+/FollowEnglish.exe
+
+# large model file (downloaded separately, see docs/log.md)
+backend/models/*.bin
+
+# runtime data - never commit user-uploaded videos or processing output
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/processed/*
+!backend/processed/.gitkeep
+
+# local env / OS files
+.env
+.DS_Store
+Thumbs.db
+
+# Claude Code local session state
+.claude/

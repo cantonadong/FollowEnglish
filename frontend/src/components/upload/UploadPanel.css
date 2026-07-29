@@ -1,0 +1,119 @@
+.upload-panel__dropzone {
+  border: 2px dashed #c9c9d0;
+  border-radius: 12px;
+  padding: 64px 32px;
+  text-align: center;
+  cursor: pointer;
+  background: #fafafc;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.upload-panel__dropzone:hover,
+.upload-panel__dropzone--over {
+  border-color: #3b6fe0;
+  background: #f0f4ff;
+}
+
+.upload-panel__icon {
+  font-size: 32px;
+  color: #3b6fe0;
+  margin-bottom: 12px;
+}
+
+.upload-panel__icon--error {
+  color: #d64545;
+}
+
+.upload-panel__title {
+  font-size: 16px;
+  color: #1a1a1a;
+  margin: 0 0 6px;
+}
+
+.upload-panel__hint {
+  font-size: 13px;
+  color: #8a8a90;
+  margin: 0;
+}
+
+.upload-panel__status {
+  border-radius: 12px;
+  padding: 48px 32px;
+  text-align: center;
+  background: #fafafc;
+  border: 1px solid #e2e2e6;
+}
+
+.upload-panel__status--error {
+  border-color: #f3c6c6;
+  background: #fff6f6;
+}
+
+.upload-panel__filename {
+  font-size: 13px;
+  color: #6b6b70;
+  margin: 0 0 16px;
+  word-break: break-all;
+}
+
+.upload-panel__progress-track {
+  height: 8px;
+  border-radius: 4px;
+  background: #e6e6ea;
+  overflow: hidden;
+  margin: 0 auto 8px;
+  max-width: 320px;
+}
+
+.upload-panel__progress-fill {
+  height: 100%;
+  background: #3b6fe0;
+  transition: width 0.2s ease-out;
+}
+
+.upload-panel__percent {
+  font-size: 13px;
+  color: #6b6b70;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.upload-panel__spinner {
+  width: 28px;
+  height: 28px;
+  margin: 0 auto 12px;
+  border-radius: 50%;
+  border: 3px solid #dcdce0;
+  border-top-color: #3b6fe0;
+  animation: upload-panel-spin 0.8s linear infinite;
+}
+
+@keyframes upload-panel-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.upload-panel__elapsed {
+  font-size: 13px;
+  color: #6b6b70;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.upload-panel__stage-label {
+  font-size: 14px;
+  color: #1a1a1a;
+  margin: 12px 0 0;
+}
+
+.upload-panel__retry {
+  margin-top: 16px;
+  background: #3b6fe0;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 20px;
+  cursor: pointer;
+  font-size: 13px;
+}
