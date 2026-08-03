@@ -6,10 +6,14 @@ interface Props {
   sentenceCount: number;
   subtitleVisible: boolean;
   repeatEnabled: boolean;
+  repeatGapEnabled: boolean;
+  repeatGapSeconds: number;
   onTogglePlay: () => void;
   onSeek: (time: number) => void;
   onToggleSubtitle: () => void;
   onToggleRepeat: () => void;
+  onToggleRepeatGap: () => void;
+  onRepeatGapSecondsChange: (seconds: number) => void;
   onFontDecrease: () => void;
   onFontIncrease: () => void;
 }
@@ -29,13 +33,26 @@ export function ControlsBar({
   sentenceCount,
   subtitleVisible,
   repeatEnabled,
+  repeatGapEnabled,
+  repeatGapSeconds,
   onTogglePlay,
   onSeek,
   onToggleSubtitle,
   onToggleRepeat,
+  onToggleRepeatGap,
+  onRepeatGapSecondsChange,
   onFontDecrease,
   onFontIncrease,
 }: Props) {
+  const handleRepeatGapChange = (value: string) => {
+    const nextValue = value.replace(/\D/g, "").slice(-1);
+    if (!nextValue) return;
+    const nextSeconds = Number(nextValue);
+    if (nextSeconds >= 1 && nextSeconds <= 9) {
+      onRepeatGapSecondsChange(nextSeconds);
+    }
+  };
+
   return (
     <div className="controls-bar">
       <button
@@ -82,6 +99,53 @@ export function ControlsBar({
       >
         {repeatEnabled ? "单句循环：开" : "单句循环：关"}
       </button>
+
+      <div className="controls-bar__gap-group" title="重复间隔：当前句播完后暂停空白秒数，再重复播放">
+        <button
+          className={"controls-bar__btn" + (repeatGapEnabled ? " controls-bar__btn--active" : "")}
+          onClick={onToggleRepeatGap}
+          aria-pressed={repeatGapEnabled}
+          disabled={!repeatEnabled}
+        >
+          间隔：{repeatGapEnabled ? "开" : "关"}
+        </button>
+        <input
+          className="controls-bar__gap-input"
+          type="number"
+          inputMode="numeric"
+          min={1}
+          max={9}
+          step={1}
+          pattern="[1-9]"
+          value={repeatGapSeconds}
+          onChange={(e) => handleRepeatGapChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowUp") {
+              e.preventDefault();
+              onRepeatGapSecondsChange(Math.min(9, repeatGapSeconds + 1));
+              return;
+            }
+            if (e.key === "ArrowDown") {
+              e.preventDefault();
+              onRepeatGapSecondsChange(Math.max(1, repeatGapSeconds - 1));
+              return;
+            }
+            if (
+              e.key.length === 1 &&
+              !/^[1-9]$/.test(e.key) &&
+              !e.ctrlKey &&
+              !e.metaKey &&
+              !e.altKey
+            ) {
+              e.preventDefault();
+            }
+          }}
+          aria-label="重复间隔秒数"
+          title="只允许输入 1-9，可用键盘上下键调整"
+          disabled={!repeatEnabled || !repeatGapEnabled}
+        />
+        <span className="controls-bar__gap-unit">秒</span>
+      </div>
 
       <div className="controls-bar__font-group" title="-/=：缩放字幕字号">
         <button className="controls-bar__btn" onClick={onFontDecrease} aria-label="字幕缩小">

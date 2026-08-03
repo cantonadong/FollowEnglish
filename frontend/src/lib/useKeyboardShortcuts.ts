@@ -7,6 +7,9 @@ interface Handlers {
   onReplay: () => void;
   onToggleSubtitle: () => void;
   onToggleRepeat: () => void;
+  onSpeedDown: () => void;
+  onSpeedUp: () => void;
+  onSpeedReset: () => void;
   onFontDecrease: () => void;
   onFontIncrease: () => void;
 }
@@ -48,6 +51,18 @@ export function useKeyboardShortcuts(handlers: Handlers, enabled = true) {
         case "KeyR":
           e.preventDefault();
           handlers.onToggleRepeat();
+          break;
+        case "KeyX":
+          e.preventDefault();
+          handlers.onSpeedDown();
+          break;
+        case "KeyC":
+          e.preventDefault();
+          handlers.onSpeedUp();
+          break;
+        case "KeyZ":
+          e.preventDefault();
+          handlers.onSpeedReset();
           break;
         case "Minus":
         case "NumpadSubtract":
