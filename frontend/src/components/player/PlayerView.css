@@ -113,6 +113,7 @@
   color: #1a1a1a;
   border: 1px solid #e2e2e6;
   border-radius: 6px;
+  box-sizing: border-box;
   padding: 6px 12px;
   cursor: pointer;
   font-size: 14px;
@@ -124,8 +125,14 @@
 }
 
 .controls-bar__btn--play {
-  min-width: 40px;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 32px;
+  flex: 0 0 42px;
+  padding: 0;
   font-size: 16px;
+  line-height: 1;
 }
 
 .controls-bar__btn--active {
@@ -139,10 +146,13 @@
 }
 
 .controls-bar__time {
+  width: 96px;
+  flex: 0 0 96px;
   font-variant-numeric: tabular-nums;
   font-size: 13px;
   color: #6b6b70;
   white-space: nowrap;
+  text-align: left;
 }
 
 .controls-bar__seek {
