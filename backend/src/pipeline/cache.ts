@@ -1,6 +1,7 @@
 import path from "node:path";
 import { access, readFile, writeFile } from "node:fs/promises";
-import type { Sentence } from "./buildSentences.js";
+import { buildSentences, type Sentence } from "./buildSentences.js";
+import { parseWhisperWordStream } from "./transcribeWords.js";
 import { PROCESSED_DIR } from "./paths.js";
 
 export interface CachedResult {
@@ -20,7 +21,24 @@ export async function loadCachedResult(id: string): Promise<CachedResult | null>
   try {
     await access(videoPath);
     const raw = await readFile(subtitlesPath, "utf-8");
-    const sentences: Sentence[] = JSON.parse(raw);
+    let sentences: Sentence[] = JSON.parse(raw);
+
+    // words.json is the source of truth. Rebuilding also repairs subtitle
+    // caches produced by older/incorrect sentence-joining logic.
+    try {
+      await access(path.join(jobDir, "subtitles.edited"));
+    } catch {
+      try {
+        const wordsRaw = await readFile(path.join(jobDir, "words.json"), "utf-8");
+        const rebuilt = buildSentences(parseWhisperWordStream(wordsRaw));
+        if (JSON.stringify(rebuilt) !== JSON.stringify(sentences)) {
+          sentences = rebuilt;
+          await persistSubtitles(jobDir, sentences);
+        }
+      } catch {
+        // Some legacy caches do not include the word timestamp stream.
+      }
+    }
     return { videoPath, sentences };
   } catch {
     return null;
@@ -29,4 +47,9 @@ export async function loadCachedResult(id: string): Promise<CachedResult | null>
 
 export async function persistSubtitles(jobDir: string, sentences: Sentence[]): Promise<void> {
   await writeFile(path.join(jobDir, "subtitles.json"), JSON.stringify(sentences), "utf-8");
+}
+
+export async function persistEditedSubtitles(jobDir: string, sentences: Sentence[]): Promise<void> {
+  await persistSubtitles(jobDir, sentences);
+  await writeFile(path.join(jobDir, "subtitles.edited"), "", "utf-8");
 }

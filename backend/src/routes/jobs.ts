@@ -1,6 +1,7 @@
 import { Router } from "express";
+import path from "node:path";
 import { createJob, getJob, updateJob, type Job } from "../pipeline/jobStore.js";
-import { loadCachedResult } from "../pipeline/cache.js";
+import { loadCachedResult, persistEditedSubtitles } from "../pipeline/cache.js";
 
 export const jobsRouter = Router();
 
@@ -49,4 +50,24 @@ jobsRouter.get("/api/jobs/:id/subtitles", async (req, res) => {
     return;
   }
   res.json({ sentences: job.sentences });
+});
+
+jobsRouter.patch("/api/jobs/:id/subtitles/:index", async (req, res) => {
+  const job = await getOrAdoptJob(req.params.id);
+  const index = Number(req.params.index);
+  const text = typeof req.body?.text === "string" ? req.body.text.trim() : "";
+  if (!job || job.status !== "ready" || !job.sentences || !job.videoPath) {
+    res.status(404).json({ error: "字幕任务不存在" });
+    return;
+  }
+  if (!Number.isInteger(index) || index < 0 || index >= job.sentences.length || !text) {
+    res.status(400).json({ error: "字幕内容无效" });
+    return;
+  }
+  const sentences = job.sentences.map((sentence, i) =>
+    i === index ? { ...sentence, text } : sentence
+  );
+  await persistEditedSubtitles(path.dirname(job.videoPath), sentences);
+  updateJob(job.id, { sentences });
+  res.json({ sentence: sentences[index] });
 });

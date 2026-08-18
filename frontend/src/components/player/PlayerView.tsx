@@ -16,34 +16,82 @@ import "./PlayerView.css";
 interface Props {
   videoSrc: string;
   sentences: Sentence[];
+  positionStorageKey?: string;
+  onSaveSentence?: (index: number, text: string) => Promise<void>;
 }
 
-export function PlayerView({ videoSrc, sentences }: Props) {
+interface SavedPosition {
+  enabled: boolean;
+  sentenceIndex: number;
+}
+
+const POSITION_STORAGE_PREFIX = "follow-english:position:";
+
+function readSavedPosition(key: string): SavedPosition {
+  try {
+    const value = window.localStorage.getItem(POSITION_STORAGE_PREFIX + key);
+    if (value) {
+      const parsed = JSON.parse(value) as Partial<SavedPosition>;
+      if (typeof parsed.enabled === "boolean" && Number.isInteger(parsed.sentenceIndex)) {
+        return { enabled: parsed.enabled, sentenceIndex: parsed.sentenceIndex as number };
+      }
+    }
+  } catch {
+    // Playback must keep working when storage is unavailable or malformed.
+  }
+  return { enabled: true, sentenceIndex: 0 };
+}
+
+function writeSavedPosition(key: string, value: SavedPosition): void {
+  try {
+    window.localStorage.setItem(POSITION_STORAGE_PREFIX + key, JSON.stringify(value));
+  } catch {
+    // Browsers can deny localStorage (for example in private mode).
+  }
+}
+
+export function PlayerView({ videoSrc, sentences, positionStorageKey = videoSrc, onSaveSentence }: Props) {
+  const initialSavedPositionRef = useRef(readSavedPosition(positionStorageKey));
+  const initialSentenceIndex = initialSavedPositionRef.current.enabled
+    ? Math.min(Math.max(initialSavedPositionRef.current.sentenceIndex, 0), Math.max(sentences.length - 1, 0))
+    : 0;
   const videoRef = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
+  const [currentTime, setCurrentTime] = useState(sentences[initialSentenceIndex]?.start ?? 0);
   const [duration, setDuration] = useState(0);
   const [subtitleVisible, setSubtitleVisible] = useState(true);
   const [repeatEnabled, setRepeatEnabled] = useState(true);
   const [repeatGapEnabled, setRepeatGapEnabled] = useState(true);
   const [repeatGapSeconds, setRepeatGapSeconds] = useState(1);
+  const [autoCopyEnabled, setAutoCopyEnabled] = useState(true);
+  const [rememberPositionEnabled, setRememberPositionEnabled] = useState(
+    initialSavedPositionRef.current.enabled
+  );
   const [repeatGapActive, setRepeatGapActive] = useState(false);
   const [fontSizeCqh, setFontSizeCqh] = useState(DEFAULT_FONT_CQH);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [speedHint, setSpeedHint] = useState<{ value: number; key: number } | null>(null);
+  const [volume, setVolume] = useState(1);
+  const [volumeHint, setVolumeHint] = useState<{ value: number; key: number } | null>(null);
+  const [sentenceTexts, setSentenceTexts] = useState(() => sentences.map((sentence) => sentence.text));
   const repeatGapTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const repeatGapStartedAtRef = useRef(0);
   const repeatGapSentenceRef = useRef<Sentence | null>(null);
   const repeatGapSecondsRef = useRef(1);
   const speedHintTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const volumeHintTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
 
   const detectedIndex = findActiveIndex(sentences, currentTime);
-  const [activeIndex, setActiveIndex] = useState(detectedIndex);
+  const [activeIndex, setActiveIndex] = useState(
+    sentences.length > 0 ? initialSentenceIndex : detectedIndex
+  );
   const activeSentence = activeIndex >= 0 ? sentences[activeIndex] : null;
   const activeText =
     activeSentence && currentTime <= activeSentence.end && !repeatGapActive
-      ? activeSentence.text
+      ? sentenceTexts[activeIndex] ?? activeSentence.text
       : null;
+
+  useEffect(() => setSentenceTexts(sentences.map((sentence) => sentence.text)), [sentences]);
 
   // Tracks "the sentence we consider active" for the timeupdate listener
   // below, which must not recompute this from the live (already-advanced)
@@ -172,6 +220,17 @@ export function PlayerView({ videoSrc, sentences }: Props) {
   const toggleSubtitle = useCallback(() => setSubtitleVisible((v) => !v), []);
   const toggleRepeat = useCallback(() => setRepeatEnabled((v) => !v), []);
   const toggleRepeatGap = useCallback(() => setRepeatGapEnabled((v) => !v), []);
+  const toggleAutoCopy = useCallback(() => setAutoCopyEnabled((v) => !v), []);
+  const toggleRememberPosition = useCallback(() => {
+    setRememberPositionEnabled((enabled) => {
+      const nextEnabled = !enabled;
+      writeSavedPosition(positionStorageKey, {
+        enabled: nextEnabled,
+        sentenceIndex: nextEnabled ? Math.max(activeIndexRef.current, 0) : 0,
+      });
+      return nextEnabled;
+    });
+  }, [positionStorageKey]);
   const updateRepeatGapSeconds = useCallback(
     (seconds: number) => {
       const nextSeconds = Math.min(9, Math.max(1, seconds));
@@ -211,6 +270,31 @@ export function PlayerView({ videoSrc, sentences }: Props) {
     [playbackRate, setVideoPlaybackRate]
   );
   const speedReset = useCallback(() => setVideoPlaybackRate(1), [setVideoPlaybackRate]);
+  const setVideoVolume = useCallback((nextVolume: number) => {
+    const normalizedVolume = Math.min(1, Math.max(0, Math.round(nextVolume * 20) / 20));
+    const video = videoRef.current;
+    if (video) {
+      video.volume = normalizedVolume;
+      video.muted = false;
+    }
+    setVolume(normalizedVolume);
+    if (volumeHintTimerRef.current !== null) {
+      window.clearTimeout(volumeHintTimerRef.current);
+    }
+    setVolumeHint({ value: normalizedVolume, key: Date.now() });
+    volumeHintTimerRef.current = window.setTimeout(() => {
+      volumeHintTimerRef.current = null;
+      setVolumeHint(null);
+    }, 2000);
+  }, []);
+  const volumeDown = useCallback(
+    () => setVideoVolume(volume - 0.05),
+    [volume, setVideoVolume]
+  );
+  const volumeUp = useCallback(
+    () => setVideoVolume(volume + 0.05),
+    [volume, setVideoVolume]
+  );
   const fontDecrease = useCallback(
     () => setFontSizeCqh((v) => Math.max(MIN_FONT_CQH, v - FONT_STEP_CQH)),
     []
@@ -232,6 +316,8 @@ export function PlayerView({ videoSrc, sentences }: Props) {
     onSpeedReset: speedReset,
     onFontDecrease: fontDecrease,
     onFontIncrease: fontIncrease,
+    onVolumeDown: volumeDown,
+    onVolumeUp: volumeUp,
   });
 
   useEffect(() => {
@@ -266,7 +352,16 @@ export function PlayerView({ videoSrc, sentences }: Props) {
       if (checkRepeatBoundary()) return;
       setCurrentTime(video.currentTime);
     };
-    const onLoadedMetadata = () => setDuration(video.duration);
+    const onLoadedMetadata = () => {
+      setDuration(video.duration);
+      if (initialSavedPositionRef.current.enabled) {
+        const sentence = sentences[initialSentenceIndex];
+        if (sentence) {
+          video.currentTime = sentence.start;
+          setCurrentTime(sentence.start);
+        }
+      }
+    };
     const onPlay = () => setPlaying(true);
     const onPause = () => setPlaying(false);
 
@@ -287,7 +382,20 @@ export function PlayerView({ videoSrc, sentences }: Props) {
       window.clearInterval(repeatBoundaryInterval);
       clearRepeatGap();
     };
-  }, [videoSrc, sentences, repeatEnabled, repeatGapEnabled, scheduleRepeatGap, clearRepeatGap]);
+  }, [
+    videoSrc,
+    sentences,
+    initialSentenceIndex,
+    repeatEnabled,
+    repeatGapEnabled,
+    scheduleRepeatGap,
+    clearRepeatGap,
+  ]);
+
+  useEffect(() => {
+    if (!rememberPositionEnabled || activeIndex < 0) return;
+    writeSavedPosition(positionStorageKey, { enabled: true, sentenceIndex: activeIndex });
+  }, [positionStorageKey, rememberPositionEnabled, activeIndex]);
 
   useEffect(() => {
     if (!repeatEnabled || !repeatGapEnabled) {
@@ -300,6 +408,9 @@ export function PlayerView({ videoSrc, sentences }: Props) {
       if (speedHintTimerRef.current !== null) {
         window.clearTimeout(speedHintTimerRef.current);
       }
+      if (volumeHintTimerRef.current !== null) {
+        window.clearTimeout(volumeHintTimerRef.current);
+      }
     };
   }, []);
 
@@ -311,6 +422,11 @@ export function PlayerView({ videoSrc, sentences }: Props) {
           {speedHint && (
             <div key={speedHint.key} className="player-view__speed-hint">
               {speedHint.value.toFixed(1)}x
+            </div>
+          )}
+          {volumeHint && (
+            <div key={volumeHint.key} className="player-view__volume-hint">
+              音量 {Math.round(volumeHint.value * 100)}%
             </div>
           )}
           <SubtitleOverlay text={activeText} visible={subtitleVisible} fontSizeCqh={fontSizeCqh} />
@@ -326,12 +442,16 @@ export function PlayerView({ videoSrc, sentences }: Props) {
           repeatEnabled={repeatEnabled}
           repeatGapEnabled={repeatGapEnabled}
           repeatGapSeconds={repeatGapSeconds}
+          autoCopyEnabled={autoCopyEnabled}
+          rememberPositionEnabled={rememberPositionEnabled}
           onTogglePlay={togglePlay}
           onSeek={seekTo}
           onToggleSubtitle={toggleSubtitle}
           onToggleRepeat={toggleRepeat}
           onToggleRepeatGap={toggleRepeatGap}
           onRepeatGapSecondsChange={updateRepeatGapSeconds}
+          onToggleAutoCopy={toggleAutoCopy}
+          onToggleRememberPosition={toggleRememberPosition}
           onFontDecrease={fontDecrease}
           onFontIncrease={fontIncrease}
         />
@@ -342,7 +462,19 @@ export function PlayerView({ videoSrc, sentences }: Props) {
       </div>
 
       <aside className="player-view__sidebar">
-        <SentenceList sentences={sentences} activeIndex={activeIndex} onSelect={seekToSentence} />
+        <SentenceList
+          sentences={sentences.map((sentence, index) => ({
+            ...sentence,
+            text: sentenceTexts[index] ?? sentence.text,
+          }))}
+          activeIndex={activeIndex}
+          autoCopyEnabled={autoCopyEnabled}
+          onSelect={seekToSentence}
+          onSave={async (index, text) => {
+            await onSaveSentence?.(index, text);
+            setSentenceTexts((current) => current.map((value, i) => (i === index ? text : value)));
+          }}
+        />
       </aside>
     </div>
   );

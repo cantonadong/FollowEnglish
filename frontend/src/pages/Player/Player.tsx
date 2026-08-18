@@ -45,7 +45,22 @@ export function Player() {
           </div>
         )}
         {!error && sentences && (
-          <PlayerView videoSrc={`/media/${jobId}/video.mp4`} sentences={sentences} />
+          <PlayerView
+            videoSrc={`/media/${jobId}/video.mp4`}
+            positionStorageKey={jobId}
+            sentences={sentences}
+            onSaveSentence={async (index, text) => {
+              const response = await fetch(`/api/jobs/${jobId}/subtitles/${index}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ text }),
+              });
+              if (!response.ok) throw new Error("字幕保存失败");
+              setSentences((current) =>
+                current?.map((sentence, i) => (i === index ? { ...sentence, text } : sentence)) ?? null
+              );
+            }}
+          />
         )}
       </div>
     </div>

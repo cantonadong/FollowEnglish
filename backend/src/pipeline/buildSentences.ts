@@ -89,7 +89,12 @@ function joinWords(words: Word[]): string {
       out += " " + w.text;
     }
   }
-  return out.trim();
+  return out
+    .trim()
+    // whisper.cpp occasionally emits one spoken word as several timestamp
+    // tokens. Repair known subword splits without changing normal spacing.
+    .replace(/\bpres\s+cript\s+ive\b/gi, "prescriptive")
+    .replace(/\benable\s+ment\b/gi, "enablement");
 }
 
 /**

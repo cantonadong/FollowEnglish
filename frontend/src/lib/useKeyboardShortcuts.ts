@@ -12,6 +12,8 @@ interface Handlers {
   onSpeedReset: () => void;
   onFontDecrease: () => void;
   onFontIncrease: () => void;
+  onVolumeDown: () => void;
+  onVolumeUp: () => void;
 }
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -39,6 +41,14 @@ export function useKeyboardShortcuts(handlers: Handlers, enabled = true) {
         case "ArrowRight":
           e.preventDefault();
           handlers.onNext();
+          break;
+        case "ArrowUp":
+          e.preventDefault();
+          handlers.onVolumeUp();
+          break;
+        case "ArrowDown":
+          e.preventDefault();
+          handlers.onVolumeDown();
           break;
         case "KeyM":
           e.preventDefault();
