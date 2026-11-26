@@ -9,6 +9,8 @@ export interface Sentence {
 
 export type JobStatus =
   | "uploading"
+  | "preparing"
+  | "remuxing"
   | "transcoding"
   | "transcribing"
   | "ready"

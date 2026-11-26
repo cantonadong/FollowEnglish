@@ -1,3 +1,6 @@
+import type { ReactNode } from "react";
+import { formatTime } from "../../lib/sentenceNav";
+
 interface Props {
   playing: boolean;
   currentTime: number;
@@ -8,25 +11,17 @@ interface Props {
   repeatEnabled: boolean;
   repeatGapEnabled: boolean;
   repeatGapSeconds: number;
-  autoCopyEnabled: boolean;
-  rememberPositionEnabled: boolean;
   onTogglePlay: () => void;
   onSeek: (time: number) => void;
   onToggleSubtitle: () => void;
   onToggleRepeat: () => void;
   onToggleRepeatGap: () => void;
   onRepeatGapSecondsChange: (seconds: number) => void;
-  onToggleAutoCopy: () => void;
-  onToggleRememberPosition: () => void;
   onFontDecrease: () => void;
   onFontIncrease: () => void;
-}
-
-function formatTime(seconds: number): string {
-  if (!Number.isFinite(seconds)) return "0:00";
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, "0")}`;
+  onToggleAudio?: () => void;
+  audioOnly?: boolean;
+  subtitleControls?: ReactNode;
 }
 
 export function ControlsBar({
@@ -39,18 +34,17 @@ export function ControlsBar({
   repeatEnabled,
   repeatGapEnabled,
   repeatGapSeconds,
-  autoCopyEnabled,
-  rememberPositionEnabled,
   onTogglePlay,
   onSeek,
   onToggleSubtitle,
   onToggleRepeat,
   onToggleRepeatGap,
   onRepeatGapSecondsChange,
-  onToggleAutoCopy,
-  onToggleRememberPosition,
   onFontDecrease,
   onFontIncrease,
+  onToggleAudio,
+  audioOnly,
+  subtitleControls,
 }: Props) {
   const handleRepeatGapChange = (value: string) => {
     const nextValue = value.replace(/\D/g, "").slice(-1);
@@ -89,6 +83,14 @@ export function ControlsBar({
       <span className="controls-bar__sentence-count" title="当前句 / 总句数">
         {sentenceCount === 0 ? "0 / 0" : `${sentenceIndex + 1} / ${sentenceCount}`}
       </span>
+      {onToggleAudio && (
+        <button type="button"
+          className={"controls-bar__btn" + (!audioOnly ? " controls-bar__btn--active" : "")}
+          aria-pressed={!audioOnly} onClick={onToggleAudio}>
+          视频：{audioOnly ? "关" : "开"}
+        </button>
+      )}
+      {subtitleControls}
 
       <button
         className={"controls-bar__btn" + (subtitleVisible ? " controls-bar__btn--active" : "")}
@@ -154,24 +156,6 @@ export function ControlsBar({
         />
         <span className="controls-bar__gap-unit">秒</span>
       </div>
-
-      <button
-        className={"controls-bar__btn" + (autoCopyEnabled ? " controls-bar__btn--active" : "")}
-        onClick={onToggleAutoCopy}
-        aria-pressed={autoCopyEnabled}
-        title="点击右侧句子时自动复制该句文本到剪贴板"
-      >
-        自动复制：{autoCopyEnabled ? "开" : "关"}
-      </button>
-
-      <button
-        className={"controls-bar__btn" + (rememberPositionEnabled ? " controls-bar__btn--active" : "")}
-        onClick={onToggleRememberPosition}
-        aria-pressed={rememberPositionEnabled}
-        title="记住当前播放到的句子，下次打开这个视频时从该句开始"
-      >
-        记住位置：{rememberPositionEnabled ? "开" : "关"}
-      </button>
 
       <div className="controls-bar__font-group" title="-/=：缩放字幕字号">
         <button className="controls-bar__btn" onClick={onFontDecrease} aria-label="字幕缩小">

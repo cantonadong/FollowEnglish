@@ -1,23 +1,23 @@
+# build output
+/target/
+/dist/
+/frontend/dist/
+/backend/dist/
+/FollowEnglish.exe
+/launcher/rsrc*.syso
+
 # dependencies
 node_modules/
 
-# build output
-frontend/dist/
-backend/dist/
+# runtime dependencies / large files (downloaded separately, see README)
+/models/*.bin
 
-# generated Windows resource / launcher binary (rebuilt by build.bat)
-launcher/*.syso
-/FollowEnglish.exe
-/FollowEnglish.exe~
-
-# large model file (downloaded separately, see docs/log.md)
-backend/models/*.bin
-
-# runtime data - never commit user-uploaded videos or processing output
-backend/uploads/*
-!backend/uploads/.gitkeep
-backend/processed/*
-!backend/processed/.gitkeep
+# runtime data (per-video state, caches)
+/data/
+/backend/uploads/*
+!/backend/uploads/.gitkeep
+/backend/processed/*
+!/backend/processed/.gitkeep
 
 # local env / OS files
 .env
@@ -27,6 +27,6 @@ Thumbs.db
 # Claude Code local session state
 .claude/
 
-# never push these — per user instruction
+# never push these (local-only notes)
 /need.txt
 /dev规范.txt

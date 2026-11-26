@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useEffect } from "react";
+import { useRef, useState, useCallback, useEffect, useMemo, type ReactNode } from "react";
 import type { Sentence } from "../../types";
 import {
   findActiveIndex,
@@ -18,6 +18,7 @@ interface Props {
   sentences: Sentence[];
   positionStorageKey?: string;
   onSaveSentence?: (index: number, text: string) => Promise<void>;
+  subtitleControls?: ReactNode;
 }
 
 interface SavedPosition {
@@ -50,12 +51,20 @@ function writeSavedPosition(key: string, value: SavedPosition): void {
   }
 }
 
-export function PlayerView({ videoSrc, sentences, positionStorageKey = videoSrc, onSaveSentence }: Props) {
+const DEFAULT_SIDEBAR_WIDTH = 300;
+
+export function PlayerView({ videoSrc, sentences, positionStorageKey = videoSrc, onSaveSentence, subtitleControls }: Props) {
+  const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const sidebarDrag = useRef<{ x: number; width: number } | null>(null);
   const initialSavedPositionRef = useRef(readSavedPosition(positionStorageKey));
   const initialSentenceIndex = initialSavedPositionRef.current.enabled
     ? Math.min(Math.max(initialSavedPositionRef.current.sentenceIndex, 0), Math.max(sentences.length - 1, 0))
     : 0;
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoRef = useRef<HTMLMediaElement | null>(null);
+  const setMediaRef = useCallback((media: HTMLMediaElement | null) => { videoRef.current = media; }, []);
+  const [audioOnly, setAudioOnly] = useState(true);
+  const resumeMedia = useRef<{ time: number; playing: boolean } | null>(null);
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(sentences[initialSentenceIndex]?.start ?? 0);
   const [duration, setDuration] = useState(0);
@@ -63,15 +72,13 @@ export function PlayerView({ videoSrc, sentences, positionStorageKey = videoSrc,
   const [repeatEnabled, setRepeatEnabled] = useState(true);
   const [repeatGapEnabled, setRepeatGapEnabled] = useState(true);
   const [repeatGapSeconds, setRepeatGapSeconds] = useState(1);
-  const [autoCopyEnabled, setAutoCopyEnabled] = useState(true);
-  const [rememberPositionEnabled, setRememberPositionEnabled] = useState(
-    initialSavedPositionRef.current.enabled
-  );
   const [repeatGapActive, setRepeatGapActive] = useState(false);
   const [fontSizeCqh, setFontSizeCqh] = useState(DEFAULT_FONT_CQH);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [speedHint, setSpeedHint] = useState<{ value: number; key: number } | null>(null);
   const [volume, setVolume] = useState(1);
+  const audioOutput = useRef<{ context: AudioContext; gain: GainNode; source?: MediaElementAudioSourceNode } | null>(null);
+  const pendingSeek = useRef<number | null>(null);
   const [volumeHint, setVolumeHint] = useState<{ value: number; key: number } | null>(null);
   const [sentenceTexts, setSentenceTexts] = useState(() => sentences.map((sentence) => sentence.text));
   const repeatGapTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
@@ -87,11 +94,15 @@ export function PlayerView({ videoSrc, sentences, positionStorageKey = videoSrc,
   );
   const activeSentence = activeIndex >= 0 ? sentences[activeIndex] : null;
   const activeText =
-    activeSentence && currentTime <= activeSentence.end && !repeatGapActive
+    activeSentence && currentTime + 0.001 >= activeSentence.start && currentTime < activeSentence.end && !repeatGapActive
       ? sentenceTexts[activeIndex] ?? activeSentence.text
       : null;
 
   useEffect(() => setSentenceTexts(sentences.map((sentence) => sentence.text)), [sentences]);
+  const displayedSentences = useMemo(
+    () => sentences.map((sentence, index) => ({ ...sentence, text: sentenceTexts[index] ?? sentence.text })),
+    [sentences, sentenceTexts]
+  );
 
   // Tracks "the sentence we consider active" for the timeupdate listener
   // below, which must not recompute this from the live (already-advanced)
@@ -152,13 +163,13 @@ export function PlayerView({ videoSrc, sentences, positionStorageKey = videoSrc,
   );
 
   const seekTo = useCallback(
-    (time: number) => {
+    (time: number, index = findActiveIndex(sentences, time)) => {
       const video = videoRef.current;
       if (!video) return;
-      const nextIndex = findActiveIndex(sentences, time);
-      activeIndexRef.current = nextIndex;
-      setActiveIndex(nextIndex);
+      activeIndexRef.current = index;
+      setActiveIndex(index);
       clearRepeatGap();
+      if (video.readyState === 0) pendingSeek.current = time;
       video.currentTime = time;
       setCurrentTime(time);
     },
@@ -176,12 +187,15 @@ export function PlayerView({ videoSrc, sentences, positionStorageKey = videoSrc,
     (index: number) => {
       const sentence = sentences[index];
       if (!sentence) return;
-      activeIndexRef.current = index;
-      setActiveIndex(index);
-      seekTo(sentence.start);
+      seekTo(sentence.start, index);
     },
     [sentences, seekTo]
   );
+
+  const playSentence = useCallback((index: number) => {
+    seekToSentence(index);
+    void videoRef.current?.play().catch(() => setPlaying(false));
+  }, [seekToSentence]);
 
   const togglePlay = useCallback(() => {
     const video = videoRef.current;
@@ -202,15 +216,13 @@ export function PlayerView({ videoSrc, sentences, positionStorageKey = videoSrc,
 
   const handlePrev = useCallback(() => {
     if (sentences.length === 0) return;
-    seekToSentence(Math.max(0, activeIndex - 1));
-    void videoRef.current?.play();
-  }, [sentences, activeIndex, seekToSentence]);
+    playSentence(Math.max(0, activeIndexRef.current - 1));
+  }, [sentences.length, playSentence]);
 
   const handleNext = useCallback(() => {
     if (sentences.length === 0) return;
-    seekToSentence(Math.min(sentences.length - 1, activeIndex + 1));
-    void videoRef.current?.play();
-  }, [sentences, activeIndex, seekToSentence]);
+    playSentence(Math.min(sentences.length - 1, activeIndexRef.current + 1));
+  }, [sentences.length, playSentence]);
 
   const handleReplay = useCallback(() => {
     if (activeIndex < 0) return;
@@ -218,19 +230,16 @@ export function PlayerView({ videoSrc, sentences, positionStorageKey = videoSrc,
   }, [activeIndex, seekToSentence]);
 
   const toggleSubtitle = useCallback(() => setSubtitleVisible((v) => !v), []);
+  const toggleAudio = () => {
+    const media = videoRef.current;
+    if (media) {
+      resumeMedia.current = { time: media.currentTime, playing: !media.paused || repeatGapActive };
+      media.pause();
+    }
+    setAudioOnly((enabled) => !enabled);
+  };
   const toggleRepeat = useCallback(() => setRepeatEnabled((v) => !v), []);
   const toggleRepeatGap = useCallback(() => setRepeatGapEnabled((v) => !v), []);
-  const toggleAutoCopy = useCallback(() => setAutoCopyEnabled((v) => !v), []);
-  const toggleRememberPosition = useCallback(() => {
-    setRememberPositionEnabled((enabled) => {
-      const nextEnabled = !enabled;
-      writeSavedPosition(positionStorageKey, {
-        enabled: nextEnabled,
-        sentenceIndex: nextEnabled ? Math.max(activeIndexRef.current, 0) : 0,
-      });
-      return nextEnabled;
-    });
-  }, [positionStorageKey]);
   const updateRepeatGapSeconds = useCallback(
     (seconds: number) => {
       const nextSeconds = Math.min(9, Math.max(1, seconds));
@@ -271,12 +280,15 @@ export function PlayerView({ videoSrc, sentences, positionStorageKey = videoSrc,
   );
   const speedReset = useCallback(() => setVideoPlaybackRate(1), [setVideoPlaybackRate]);
   const setVideoVolume = useCallback((nextVolume: number) => {
-    const normalizedVolume = Math.min(1, Math.max(0, Math.round(nextVolume * 20) / 20));
-    const video = videoRef.current;
-    if (video) {
-      video.volume = normalizedVolume;
-      video.muted = false;
+    const normalizedVolume = Math.min(2, Math.max(0, Math.round(nextVolume * 20) / 20));
+    if (normalizedVolume > 1 && !audioOutput.current) {
+      const context = new AudioContext();
+      const gain = context.createGain();
+      gain.connect(context.destination);
+      audioOutput.current = { context, gain };
     }
+    const context = audioOutput.current?.context;
+    if (context?.state === "suspended") void context.resume().catch(() => {});
     setVolume(normalizedVolume);
     if (volumeHintTimerRef.current !== null) {
       window.clearTimeout(volumeHintTimerRef.current);
@@ -325,7 +337,22 @@ export function PlayerView({ videoSrc, sentences, positionStorageKey = videoSrc,
     if (video) {
       video.playbackRate = playbackRate;
     }
-  }, [videoSrc, playbackRate]);
+  }, [videoSrc, audioOnly, playbackRate]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const output = audioOutput.current;
+    if (output) {
+      if (output.source?.mediaElement !== video) {
+        output.source?.disconnect();
+        output.source = output.context.createMediaElementSource(video);
+        output.source.connect(output.gain);
+      }
+      output.gain.gain.value = Math.max(1, volume);
+    }
+    video.volume = Math.min(1, volume);
+  }, [videoSrc, audioOnly, volume]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -354,6 +381,22 @@ export function PlayerView({ videoSrc, sentences, positionStorageKey = videoSrc,
     };
     const onLoadedMetadata = () => {
       setDuration(video.duration);
+      const resume = resumeMedia.current;
+      const seek = pendingSeek.current;
+      pendingSeek.current = null;
+      if (seek !== null) {
+        resumeMedia.current = null;
+        video.currentTime = Math.min(seek, video.duration);
+        setCurrentTime(video.currentTime);
+        return;
+      }
+      if (resume) {
+        resumeMedia.current = null;
+        video.currentTime = Math.min(resume.time, video.duration);
+        setCurrentTime(video.currentTime);
+        if (resume.playing) void video.play().catch(() => setPlaying(false));
+        return;
+      }
       if (initialSavedPositionRef.current.enabled) {
         const sentence = sentences[initialSentenceIndex];
         if (sentence) {
@@ -369,21 +412,34 @@ export function PlayerView({ videoSrc, sentences, positionStorageKey = videoSrc,
     video.addEventListener("loadedmetadata", onLoadedMetadata);
     video.addEventListener("play", onPlay);
     video.addEventListener("pause", onPause);
-    const repeatBoundaryInterval = window.setInterval(() => {
-      if (!video.paused) {
-        checkRepeatBoundary();
+    let repeatBoundaryInterval: number | undefined;
+    const startRepeatClock = () => {
+      if (repeatEnabled && repeatBoundaryInterval === undefined) {
+        repeatBoundaryInterval = window.setInterval(checkRepeatBoundary, 30);
       }
-    }, 40);
+    };
+    const stopRepeatClock = () => {
+      window.clearInterval(repeatBoundaryInterval);
+      repeatBoundaryInterval = undefined;
+    };
+    video.addEventListener("playing", startRepeatClock);
+    video.addEventListener("pause", stopRepeatClock);
+    video.addEventListener("ended", stopRepeatClock);
+    if (!video.paused) startRepeatClock();
     return () => {
       video.removeEventListener("timeupdate", onTimeUpdate);
       video.removeEventListener("loadedmetadata", onLoadedMetadata);
       video.removeEventListener("play", onPlay);
       video.removeEventListener("pause", onPause);
-      window.clearInterval(repeatBoundaryInterval);
+      video.removeEventListener("playing", startRepeatClock);
+      video.removeEventListener("pause", stopRepeatClock);
+      video.removeEventListener("ended", stopRepeatClock);
+      stopRepeatClock();
       clearRepeatGap();
     };
   }, [
     videoSrc,
+    audioOnly,
     sentences,
     initialSentenceIndex,
     repeatEnabled,
@@ -393,9 +449,9 @@ export function PlayerView({ videoSrc, sentences, positionStorageKey = videoSrc,
   ]);
 
   useEffect(() => {
-    if (!rememberPositionEnabled || activeIndex < 0) return;
+    if (!initialSavedPositionRef.current.enabled || activeIndex < 0) return;
     writeSavedPosition(positionStorageKey, { enabled: true, sentenceIndex: activeIndex });
-  }, [positionStorageKey, rememberPositionEnabled, activeIndex]);
+  }, [positionStorageKey, activeIndex]);
 
   useEffect(() => {
     if (!repeatEnabled || !repeatGapEnabled) {
@@ -405,6 +461,10 @@ export function PlayerView({ videoSrc, sentences, positionStorageKey = videoSrc,
 
   useEffect(() => {
     return () => {
+      if (audioOutput.current) {
+        void audioOutput.current.context.close();
+        audioOutput.current = null;
+      }
       if (speedHintTimerRef.current !== null) {
         window.clearTimeout(speedHintTimerRef.current);
       }
@@ -417,8 +477,14 @@ export function PlayerView({ videoSrc, sentences, positionStorageKey = videoSrc,
   return (
     <div className="player-view">
       <div className="player-view__main">
-        <div className="player-view__stage" onClick={togglePlay}>
-          <video ref={videoRef} className="player-view__video" src={videoSrc} />
+        <div className="player-view__stage" onClick={togglePlay} onWheel={(event) => {
+          if (event.ctrlKey) return;
+          if (event.deltaY < 0) handlePrev();
+          if (event.deltaY > 0) handleNext();
+        }}>
+          {audioOnly
+            ? <audio ref={setMediaRef} src={videoSrc} preload="metadata" />
+            : <video ref={setMediaRef} className="player-view__video" src={videoSrc} preload="metadata" />}
           {speedHint && (
             <div key={speedHint.key} className="player-view__speed-hint">
               {speedHint.value.toFixed(1)}x
@@ -442,18 +508,17 @@ export function PlayerView({ videoSrc, sentences, positionStorageKey = videoSrc,
           repeatEnabled={repeatEnabled}
           repeatGapEnabled={repeatGapEnabled}
           repeatGapSeconds={repeatGapSeconds}
-          autoCopyEnabled={autoCopyEnabled}
-          rememberPositionEnabled={rememberPositionEnabled}
           onTogglePlay={togglePlay}
           onSeek={seekTo}
           onToggleSubtitle={toggleSubtitle}
           onToggleRepeat={toggleRepeat}
           onToggleRepeatGap={toggleRepeatGap}
           onRepeatGapSecondsChange={updateRepeatGapSeconds}
-          onToggleAutoCopy={toggleAutoCopy}
-          onToggleRememberPosition={toggleRememberPosition}
           onFontDecrease={fontDecrease}
           onFontIncrease={fontIncrease}
+          onToggleAudio={toggleAudio}
+          audioOnly={audioOnly}
+          subtitleControls={subtitleControls}
         />
 
         <div className="player-view__shortcuts-hint">
@@ -461,15 +526,42 @@ export function PlayerView({ videoSrc, sentences, positionStorageKey = videoSrc,
         </div>
       </div>
 
-      <aside className="player-view__sidebar">
+      <div
+        className="player-view__divider"
+        role="separator"
+        aria-label="字幕栏宽度"
+        aria-orientation="vertical"
+        tabIndex={0}
+        title="拖动调整字幕栏宽度，双击重置"
+        onDoubleClick={() => setSidebarWidth(DEFAULT_SIDEBAR_WIDTH)}
+        onPointerDown={(event) => {
+          if (!event.isPrimary || event.button !== 0 || !sidebarRef.current) return;
+          sidebarDrag.current = { x: event.clientX, width: sidebarRef.current.offsetWidth };
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerMove={(event) => {
+          const drag = sidebarDrag.current;
+          if (drag && event.currentTarget.hasPointerCapture(event.pointerId)) {
+            setSidebarWidth(Math.max(180, drag.width + drag.x - event.clientX));
+          }
+        }}
+        onLostPointerCapture={() => { sidebarDrag.current = null; }}
+        onKeyDown={(event) => {
+          const width = sidebarRef.current?.offsetWidth ?? sidebarWidth;
+          if (event.key === "ArrowLeft") setSidebarWidth(Math.max(180, width + 16));
+          else if (event.key === "ArrowRight") setSidebarWidth(Math.max(180, width - 16));
+          else if (event.key === "Home") setSidebarWidth(DEFAULT_SIDEBAR_WIDTH);
+          else return;
+          event.stopPropagation();
+          event.preventDefault();
+        }}
+      />
+      <aside ref={sidebarRef} className="player-view__sidebar" style={{ width: sidebarWidth }}>
         <SentenceList
-          sentences={sentences.map((sentence, index) => ({
-            ...sentence,
-            text: sentenceTexts[index] ?? sentence.text,
-          }))}
+          sentences={displayedSentences}
           activeIndex={activeIndex}
-          autoCopyEnabled={autoCopyEnabled}
-          onSelect={seekToSentence}
+          autoCopyEnabled
+          onSelect={playSentence}
           onSave={async (index, text) => {
             await onSaveSentence?.(index, text);
             setSentenceTexts((current) => current.map((value, i) => (i === index ? text : value)));

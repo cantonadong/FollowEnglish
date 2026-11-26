@@ -1,6 +1,6 @@
 import type { Sentence } from "./buildSentences.js";
 
-export type JobStatus = "uploading" | "transcoding" | "transcribing" | "ready" | "error";
+export type JobStatus = "uploading" | "preparing" | "remuxing" | "transcoding" | "transcribing" | "ready" | "error";
 
 export interface Job {
   id: string;
@@ -11,6 +11,8 @@ export interface Job {
   originalPath?: string;
   videoPath?: string;
   sentences?: Sentence[];
+  subtitleSource?: string;
+  subtitleWarning?: string;
   createdAt: number;
 }
 
@@ -19,7 +21,7 @@ const jobs = new Map<string, Job>();
 export function createJob(id: string): Job {
   const job: Job = {
     id,
-    status: "uploading",
+    status: "preparing",
     percent: 0,
     elapsedSeconds: 0,
     createdAt: Date.now(),

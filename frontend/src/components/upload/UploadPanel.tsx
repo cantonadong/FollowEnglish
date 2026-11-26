@@ -12,7 +12,8 @@ interface Props {
   elapsedSeconds?: number;
   errorMessage?: string;
   fileName?: string;
-  onFileSelected: (file: File) => void;
+  onFileSelected?: (file: File) => void;
+  onOpenLocal?: () => void;
   onRetry: () => void;
 }
 
@@ -26,6 +27,8 @@ function StageLabel({ state }: { state: UploadUiState }) {
   const labels: Record<UploadUiState, string> = {
     idle: "",
     uploading: "正在上传视频…",
+    preparing: "正在检查视频格式…",
+    remuxing: "正在转换视频容器（无需重新编码）…",
     transcoding: "正在转码视频…",
     transcribing: "正在识别英文字幕…",
     ready: "处理完成，正在进入播放页…",
@@ -41,6 +44,7 @@ export function UploadPanel({
   errorMessage,
   fileName,
   onFileSelected,
+  onOpenLocal,
   onRetry,
 }: Props) {
   const [dragOver, setDragOver] = useState(false);
@@ -48,7 +52,7 @@ export function UploadPanel({
 
   const handleFiles = useCallback(
     (files: FileList | null) => {
-      if (files && files[0]) onFileSelected(files[0]);
+      if (files && files[0]) onFileSelected?.(files[0]);
     },
     [onFileSelected]
   );
@@ -65,9 +69,18 @@ export function UploadPanel({
         onDrop={(e) => {
           e.preventDefault();
           setDragOver(false);
-          handleFiles(e.dataTransfer.files);
+          if (onOpenLocal && e.dataTransfer.files.length) onOpenLocal();
+          else handleFiles(e.dataTransfer.files);
         }}
-        onClick={() => inputRef.current?.click()}
+        onClick={() => onOpenLocal ? onOpenLocal() : inputRef.current?.click()}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key !== "Enter" && e.key !== " ") return;
+          e.preventDefault();
+          if (onOpenLocal) onOpenLocal();
+          else inputRef.current?.click();
+        }}
       >
         <input
           ref={inputRef}
@@ -77,7 +90,7 @@ export function UploadPanel({
           onChange={(e) => handleFiles(e.target.files)}
         />
         <div className="upload-panel__icon">⬆</div>
-        <p className="upload-panel__title">拖拽视频文件到此处，或点击选择</p>
+        <p className="upload-panel__title">{onOpenLocal ? "点击选择视频文件" : "拖拽视频文件到此处，或点击选择"}</p>
         <p className="upload-panel__hint">
           支持格式：{ACCEPTED_EXTENSIONS.map((e) => e.slice(1)).join(" / ")}
         </p>
@@ -102,7 +115,7 @@ export function UploadPanel({
     <div className="upload-panel__status">
       {fileName && <p className="upload-panel__filename">{fileName}</p>}
 
-      {(state === "uploading" || state === "transcoding") && (
+      {(state === "uploading" || state === "remuxing" || state === "transcoding") && (
         <>
           <div className="upload-panel__progress-track">
             <div className="upload-panel__progress-fill" style={{ width: `${percent}%` }} />

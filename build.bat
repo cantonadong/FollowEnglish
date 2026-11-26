@@ -4,7 +4,7 @@ cd /d "%~dp0"
 
 echo Building FollowEnglish.exe...
 
-echo [1/3] Building frontend...
+echo [1/4] Building frontend...
 pushd frontend
 call npm.cmd run build
 if errorlevel 1 (
@@ -13,7 +13,7 @@ if errorlevel 1 (
 )
 popd
 
-echo [2/3] Compiling backend...
+echo [2/4] Compiling backend...
 pushd backend
 call npm.cmd run build
 if errorlevel 1 (
@@ -22,24 +22,31 @@ if errorlevel 1 (
 )
 popd
 
-echo [3/3] Building Windows launcher...
+echo [3/4] Building Rust subtitle engine...
+cargo build --release
+if errorlevel 1 goto :error
+
+echo [4/4] Building Windows launcher...
 pushd launcher
 where go-winres >nul 2>nul
-if errorlevel 1 (
-  if not exist rsrc_windows_amd64.syso (
-    echo go-winres was not found and launcher\rsrc_windows_amd64.syso is missing.
-    echo Install go-winres, then rerun this script.
-    popd
-    goto :error
-  )
-) else (
+if not errorlevel 1 (
   go-winres simply --arch amd64 --icon icon.ico --manifest gui --product-name "FollowEnglish" --file-description "FollowEnglish - English listening practice" --out rsrc
   if errorlevel 1 (
     popd
     goto :error
   )
+) else (
+  where llvm-rc >nul 2>nul
+  if not errorlevel 1 (
+    llvm-rc /fo "%TEMP%\FollowEnglish-icon.res" icon.rc
+    if not errorlevel 1 llvm-cvtres /machine:X64 /out:rsrc_windows_amd64.syso "%TEMP%\FollowEnglish-icon.res"
+    if errorlevel 1 (
+      popd
+      goto :error
+    )
+  )
 )
-go build -ldflags "-H=windowsgui -s -w" -o "..\FollowEnglish.exe" .
+go build -buildvcs=false -ldflags "-H=windowsgui -s -w" -o "..\FollowEnglish.exe" .
 if errorlevel 1 (
   popd
   goto :error

@@ -1,7 +1,8 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { UploadPanel, type UploadUiState } from "../../components/upload/UploadPanel";
 import "../UploadPreview/UploadPreview.css";
+
 
 interface JobStatusResponse {
   status: UploadUiState;
@@ -16,13 +17,14 @@ export function Upload() {
   const [percent, setPercent] = useState(0);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string>();
-  const [fileName, setFileName] = useState<string>();
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pickingRef = useRef(false);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = null;
   }, []);
+  useEffect(() => stopPolling, [stopPolling]);
 
   const pollJob = useCallback(
     (jobId: string) => {
@@ -52,50 +54,38 @@ export function Upload() {
     [navigate, stopPolling]
   );
 
-  const handleFileSelected = useCallback(
-    (file: File) => {
-      setFileName(file.name);
-      setState("uploading");
-      setPercent(0);
-      setErrorMessage(undefined);
-
-      const formData = new FormData();
-      formData.append("video", file);
-
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", "/api/upload");
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) setPercent((e.loaded / e.total) * 100);
-      };
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          const { jobId } = JSON.parse(xhr.responseText);
-          setState("transcoding");
-          setPercent(0);
-          pollJob(jobId);
-        } else {
-          setState("error");
-          try {
-            setErrorMessage(JSON.parse(xhr.responseText).error ?? "上传失败");
-          } catch {
-            setErrorMessage("上传失败");
-          }
-        }
-      };
-      xhr.onerror = () => {
-        setState("error");
-        setErrorMessage("网络错误，上传失败");
-      };
-      xhr.send(formData);
-    },
-    [pollJob]
-  );
+  const openLocal = async () => {
+    if (pickingRef.current) return;
+    pickingRef.current = true;
+    setErrorMessage(undefined);
+    setPercent(0);
+    setElapsedSeconds(0);
+    try {
+      const response = await fetch("/api/open-local", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      if (response.status === 204) {
+        setState("idle");
+        return;
+      }
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "无法打开视频。");
+      setState("preparing");
+      pollJob(result.jobId);
+    } catch (error) {
+      setState("error");
+      setErrorMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      pickingRef.current = false;
+    }
+  };
 
   const handleRetry = useCallback(() => {
     stopPolling();
     setState("idle");
     setErrorMessage(undefined);
-    setFileName(undefined);
     setPercent(0);
     setElapsedSeconds(0);
   }, [stopPolling]);
@@ -105,14 +95,13 @@ export function Upload() {
       <div className="upload-preview__stage">
         <div className="upload-preview__card">
           <h1 className="upload-preview__app-title">FollowEnglish</h1>
-          <p className="upload-preview__app-subtitle">上传视频，自动生成英文字幕，开始精听 / shadowing 练习</p>
+          <p className="upload-preview__app-subtitle">选择视频，自动加载同名字幕，开始精听 / shadowing 练习</p>
           <UploadPanel
             state={state}
             percent={percent}
             elapsedSeconds={elapsedSeconds}
             errorMessage={errorMessage}
-            fileName={fileName}
-            onFileSelected={handleFileSelected}
+            onOpenLocal={openLocal}
             onRetry={handleRetry}
           />
         </div>

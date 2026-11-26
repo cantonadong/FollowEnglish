@@ -1,0 +1,4 @@
+[toolchain]
+# Built with the GNU toolchain + llvm-mingw (no MSVC build tools needed).
+channel = "stable-x86_64-pc-windows-gnu"
+profile = "minimal"

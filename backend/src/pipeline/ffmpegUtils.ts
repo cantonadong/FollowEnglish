@@ -1,4 +1,5 @@
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
+import { promisify } from "node:util";
 import readline from "node:readline";
 
 export interface RunFfmpegOptions {
@@ -29,6 +30,8 @@ export function runFfmpeg({ args, cwd, onProgress, totalDurationSeconds }: RunFf
           onProgress(Math.min(1, outSeconds / totalDurationSeconds));
         }
       });
+    } else {
+      proc.stdout.resume();
     }
 
     proc.on("error", reject);
@@ -39,25 +42,20 @@ export function runFfmpeg({ args, cwd, onProgress, totalDurationSeconds }: RunFf
   });
 }
 
-export function getMediaDurationSeconds(filePath: string): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const proc = spawn("ffprobe", [
-      "-v",
-      "error",
-      "-show_entries",
-      "format=duration",
-      "-of",
-      "default=noprint_wrappers=1:nokey=1",
-      filePath,
-    ]);
-    let out = "";
-    let err = "";
-    proc.stdout.on("data", (c) => (out += c.toString()));
-    proc.stderr.on("data", (c) => (err += c.toString()));
-    proc.on("error", reject);
-    proc.on("close", (code) => {
-      if (code === 0) resolve(parseFloat(out.trim()));
-      else reject(new Error(`ffprobe exited with code ${code}\n${err}`));
-    });
-  });
+export async function probeMedia(filePath: string) {
+  const { stdout } = await promisify(execFile)("ffprobe", [
+    "-v", "error", "-show_entries",
+    "format=format_name,duration:stream=index,codec_type,codec_name,pix_fmt:stream_disposition=attached_pic",
+    "-of", "json", filePath,
+  ]);
+  return JSON.parse(stdout) as {
+    format: { format_name: string; duration?: string };
+    streams: {
+      index: number;
+      codec_type: string;
+      codec_name: string;
+      pix_fmt?: string;
+      disposition?: { attached_pic?: number };
+    }[];
+  };
 }

@@ -3,6 +3,7 @@ import { access, readFile, writeFile } from "node:fs/promises";
 import { buildSentences, type Sentence } from "./buildSentences.js";
 import { parseWhisperWordStream } from "./transcribeWords.js";
 import { PROCESSED_DIR } from "./paths.js";
+import { cachedVideoPath } from "./transcode.js";
 
 export interface CachedResult {
   videoPath: string;
@@ -16,10 +17,10 @@ export interface CachedResult {
  */
 export async function loadCachedResult(id: string): Promise<CachedResult | null> {
   const jobDir = path.join(PROCESSED_DIR, id);
-  const videoPath = path.join(jobDir, "video.mp4");
+  const videoPath = cachedVideoPath(jobDir);
+  if (!videoPath) return null;
   const subtitlesPath = path.join(jobDir, "subtitles.json");
   try {
-    await access(videoPath);
     const raw = await readFile(subtitlesPath, "utf-8");
     let sentences: Sentence[] = JSON.parse(raw);
 

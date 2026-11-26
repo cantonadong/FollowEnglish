@@ -5,10 +5,12 @@ package main
 
 import (
 	_ "embed"
+	"fmt"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"syscall"
 	"time"
 	"unsafe"
@@ -21,14 +23,18 @@ import (
 var iconBytes []byte
 
 const (
-	appURL     = "http://localhost:4000"
-	mutexName  = "Global\\FollowEnglish_SingleInstance_Mutex"
+	appURL         = "http://localhost:4000"
+	mutexName      = "Global\\FollowEnglish_SingleInstance_Mutex"
 	CreateNoWindow = 0x08000000
 )
 
 var nodeCmd *exec.Cmd
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "--pick-video" {
+		pickVideo()
+		return
+	}
 	mutexNamePtr, _ := windows.UTF16PtrFromString(mutexName)
 	handle, err := windows.CreateMutex(nil, false, mutexNamePtr)
 	if err == nil && handle != 0 {
@@ -40,7 +46,66 @@ func main() {
 		return
 	}
 
+	doubleClickMS, _, _ := windows.NewLazySystemDLL("user32.dll").NewProc("GetDoubleClickTime").Call()
+	doubleClickTime := time.Duration(doubleClickMS) * time.Millisecond
+	var lastTap time.Time
+	systray.SetOnTapped(func() {
+		now := time.Now()
+		if now.Sub(lastTap) <= doubleClickTime {
+			lastTap = time.Time{}
+			openBrowser(appURL)
+			return
+		}
+		lastTap = now
+	})
 	systray.Run(onReady, onExit)
+}
+
+func pickVideo() {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	type openFilename struct {
+		size                   uint32
+		owner, instance        uintptr
+		filter, customFilter   *uint16
+		customMax, filterIndex uint32
+		file                   *uint16
+		fileMax                uint32
+		fileTitle              *uint16
+		fileTitleMax           uint32
+		initialDir, title      *uint16
+		flags                  uint32
+		fileOffset, extension  uint16
+		defaultExt             *uint16
+		data, hook             uintptr
+		template               *uint16
+		reserved               uintptr
+		reservedFlags, flagsEx uint32
+	}
+	filter := []uint16{}
+	for _, part := range []string{"Video files", "*.mp4;*.m4v;*.mov;*.avi;*.mkv;*.flv;*.webm;*.wmv", ""} {
+		encoded, _ := windows.UTF16FromString(part)
+		filter = append(filter, encoded...)
+	}
+	title, _ := windows.UTF16PtrFromString("FollowEnglish - Open video")
+	file := make([]uint16, 32768)
+	user32 := windows.NewLazySystemDLL("user32.dll")
+	owner, _, _ := user32.NewProc("GetForegroundWindow").Call()
+	ofn := openFilename{
+		owner: owner, filter: &filter[0], file: &file[0],
+		fileMax: uint32(len(file)), title: title,
+		flags: 0x80000 | 0x1000 | 0x800 | 0x8,
+	}
+	ofn.size = uint32(unsafe.Sizeof(ofn))
+	dialog := windows.NewLazySystemDLL("comdlg32.dll")
+	ok, _, _ := dialog.NewProc("GetOpenFileNameW").Call(uintptr(unsafe.Pointer(&ofn)))
+	if ok != 0 {
+		fmt.Println("VIDEO_PATH=" + windows.UTF16ToString(file))
+	} else if code, _, _ := dialog.NewProc("CommDlgExtendedError").Call(); code != 0 {
+		fmt.Fprintf(os.Stderr, "Windows file picker error: 0x%x\n", code)
+		os.Exit(1)
+	}
 }
 
 func onReady() {

@@ -1,5 +1,4 @@
 import express from "express";
-import cors from "cors";
 import path from "node:path";
 import fs from "node:fs";
 import { uploadRouter } from "./routes/upload.js";
@@ -11,8 +10,15 @@ const PORT = process.env.PORT ? Number(process.env.PORT) : 4000;
 
 const FRONTEND_DIST = path.resolve("../frontend/dist");
 
-app.use(cors());
 app.use(express.json());
+app.use("/api", (req, res, next) => {
+  const origin = req.get("origin");
+  if (origin && origin !== `http://${req.get("host")}`) {
+    res.sendStatus(403);
+    return;
+  }
+  next();
+});
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true });
@@ -29,6 +35,6 @@ if (fs.existsSync(FRONTEND_DIST)) {
   });
 }
 
-app.listen(PORT, () => {
+app.listen(PORT, "127.0.0.1", () => {
   console.log(`FollowEnglish backend listening on http://localhost:${PORT}`);
 });

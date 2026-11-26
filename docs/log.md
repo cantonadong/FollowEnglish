@@ -1,5 +1,77 @@
 # 开发日志
 
+## v2.0：Rust + Slint 原生重写（2026-11-23）
+
+目标：精简目录、以最小内存/CPU 实现与 v1.x 相同的功能。旧版 Web 实现（React 前端 + Node 后端 + Go 托盘启动器）已从工作区删除，完整代码（含重写前未提交的改动）保存在 git 分支 `legacy-web`。
+
+### 架构
+
+- 单个原生 exe：`FollowEnglish.exe`（Rust + Slint，软件渲染器，无浏览器、无 Node、无托盘进程）
+- 播放：运行时动态加载 `libmpv-2.dll`（LoadLibrary，无需导入库），渲染到嵌入主窗口的子 HWND；mpv 支持全部格式，**不再需要转码**；字幕（由句子列表生成的 SRT）、倍速/音量提示均由 mpv 渲染
+- 字幕逻辑从 TS 逐行移植到 `src/subs.rs`（SRT/VTT 滚动字幕/ASS 解析、断句、whisper JSON 宽松解析），有单元测试 `cargo test`
+- 内置字幕：ffprobe + ffmpeg 提取，按文件版本缓存在 `data/embedded/`
+- 语音识别：ffmpeg `whisper` 滤镜，一次完成（不再先导出 wav），模型 `models/ggml-base.en.bin`
+- 持久化：`data/videos/<hash>.json`（字幕来源、外置关联、编辑内容、记住位置），`data/settings.json`（字幕栏宽度）
+- 目录：`src/{main,subs,store,media,mpv,win}.rs` + `ui/app.slint`
+- 不提供任何 .bat 脚本给用户（用户要求）；构建用 `cargo build --release`，产物 `target/release/FollowEnglish.exe` 复制到根目录即可
+
+### 实测（1080p 高码率测试视频，24 核 CPU）
+
+| mpv 配置 | Private 内存 | CPU |
+|---|---|---|
+| gpu-next + 硬解（mpv 默认） | ~352MB | ~0.5% 单核 |
+| **gpu + profile=fast + 软解 4 线程（采用）** | **~184MB** | ~1–2% 单核 |
+| 无视频轨（纯 UI+音频） | ~33MB | — |
+
+- 720p 视频约 120–150MB；仅 UI（preview 模式）约 12MB private / 26MB WS
+- 旧版：浏览器标签页 + Node 后端 + Go 托盘，合计通常数百 MB
+- 想要硬解可设置环境变量 `FE_MPV_OPTS=hwdec=auto-safe`（分号分隔多个 `k=v`）；`FE_MPV_LOG=路径` 输出 mpv 日志
+
+### 踩坑记录
+
+- **本机没有 MSVC**：改用 `stable-x86_64-pc-windows-gnu` 工具链（`rust-toolchain.toml`）+ llvm-mingw 链接（`.cargo/config.toml`）
+  - Rust 自带的 self-contained mingw（binutils dlltool）生成的 raw-dylib 导入有问题，build script 启动即 `STATUS_ACCESS_VIOLATION`
+  - llvm-mingw 缺 `libgcc_eh.a`/`libgcc.a`：已在 `D:\Program\llvm-mingw\x86_64-w64-mingw32\lib\` 放入垫片（分别复制自同目录 `libunwind.a` 与 `lib\clang\23\lib\windows\libclang_rt.builtins-x86_64.a`）
+- winit 的原生窗口在事件循环启动后才创建：`show()` 之后立刻取 HWND 为空，需在事件循环里（Timer）取
+- mpv 的视频窗口（另一线程创建，与主窗口共享输入队列）会抢键盘焦点，且其 IME 会吞掉字母快捷键（方向键正常、R/M/Q 无效）：视频容器窗口设为 `WS_DISABLED`（点击穿透到 Slint，由 Slint 处理点击播放/暂停），并在 mpv 事件中把焦点还给主窗口
+- 子 HWND 会盖住 Slint 绘制的内容，所以“字幕设置”菜单改为控制栏内的展开行（不再是浮在视频上的弹出菜单）
+- Slint 1.19：`ScrollView.viewport-*` 已改名 `content-*`；用窗口宽度计算侧栏最大宽度会形成绑定环，需给布局显式 x/y/width/height
+- 自动化测试注意：从后台进程启动的窗口可能拿不到前台（前台锁），`SendKeys` 会发到其他窗口——不要在用户使用电脑时注入按键
+
+### v2.0 视觉调整（用户反馈）
+
+- 视频下方按钮行、字幕来源行改为居中对齐
+- 右侧栏底部按钮改用与视频下方一致的按钮样式（32px 高、14px 字、圆角 6）
+- 右侧字幕列表：上下各留半屏空白，当前句永远居中（包括最前几条）。注意：Slint 1.19 中 `for` 生成的行里 `changed` 回调不会触发，改为根组件递增 `scroll-req`，当前行用一次性 Timer 执行居中
+- 视频字幕：mpv `sub-border-style=background-box`，`sub-back-color=#99000000`（黑色约 60% 不透明），`sub-border-size=4`（框内边距 + 文字黑描边）
+- 字幕背景框加大并与文字留白：`sub-border-size=12`（框内边距）+ `sub-border-color=#00000000`（去掉文字描边，否则描边随边距一起变粗糊成一片）
+- Bug：窗口从一块屏拖到另一块缩放比例不同的屏（150%→100%）后视频显示不完整。原因：Slint 逻辑坐标不变，不触发 geometry-changed，视频子窗口仍按旧缩放的像素尺寸摆放。修复：子类化主窗口（SetWindowSubclass），在 WM_DPICHANGED/WM_SIZE/WM_WINDOWPOSCHANGED 后按新缩放重新摆放视频窗口
+- 落地页去掉“选择本地视频”按钮，整个页面可点击打开视频（提示文字“点击任意位置打开本地视频”）
+- 字幕背景不透明度 60% → 95%（`#F2000000`），用于挡住视频里烧录的原字幕
+- 倍速提示改到视频左下角、音量提示改到右下角：用 mpv `osd-overlay`（ass-events，`\an1`/`\an3`），两个独立叠加层互不覆盖，2 秒后发 `osd-overlay <id> none ""` 清除（data 参数不能省略，否则清除命令不执行）
+- 新快捷键：`1` 恢复 1.0x，`2` 两倍速（间隔秒数输入框获得焦点时，数字键仍用于设置间隔）
+- “字幕设置”移到控制栏第一行最右侧，展开后“内置/外置/打开/识别”在其左侧同一行显示（进度条自动缩短），按钮变为“收起”；识别进度/取消也在这一行
+- 之后按用户要求再调整：“字幕设置”按钮放在 A+ 右侧，展开的选项（内置/外置/打开/识别、错误提示、识别进度/取消）直接显示在同一行（第二行）按钮右侧；展开时第二行进入紧凑模式（按钮左右内边距 12→6px、间距 8→6px，全局 `Ui.compact`），否则约 1400px 宽的控制栏放不下
+- 时间文字去掉固定宽度（110px），与进度条之间保持统一 10px 间距
+- 右侧列表：行左内边距 10→4px、列表左边距 8→4px，序号/编辑按钮左移；序号列宽按总句数位数自适应（≈8px/位，最小 24px），4–5 位序号可完整显示（用 1200 句 mock 验证）
+- 视频区鼠标指针为小手（Slint TouchArea `pointer` + 视频容器窗口类 `IDC_HAND`）
+- 图标恢复为用户的绿色“Aa”图标：重写时切回 main 分支把 `launcher/icon.ico` 还原成了旧的蓝色版，之后才复制到根目录。正确的图标来自 `legacy-web` 分支（7 帧，含 PNG 压缩帧，System.Drawing 预览会显示成噪点，但 windres/Windows 均正常）
+- 开发参数 `--multi`：跳过单实例，便于在正在运行的实例旁测试；截图被遮挡时用 PrintWindow(PW_RENDERFULLCONTENT) 抓窗口
+
+### 与 v1.x 的差异
+
+- “字幕设置”从弹出菜单改为展开行；“打开字幕文件…”按钮在同一行
+- 不再需要转码；FLV/WMV/MKV 等直接播放
+- 打开视频改为原生窗口内操作，无浏览器；也可把视频文件拖到 exe 上（命令行参数）打开
+- 新增 `↑/↓` 音量提示写入快捷键说明（v1 已有功能，仅文案补充）
+
+### 待处理
+
+- 拖放视频到窗口内（v1 是拖到网页后弹出选择框）暂未实现，可拖到 exe 图标上
+- 语音识别 UI 流程仅验证了 ffmpeg 命令与解析，需用户用真实英文视频验证一次
+
+---
+
 ## 环境信息（关键，供后续迭代复用）
 
 - OS: Windows 11 Pro

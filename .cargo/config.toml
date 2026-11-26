@@ -1,0 +1,6 @@
+[target.x86_64-pc-windows-gnu]
+# No MSVC build tools on this machine: link with llvm-mingw (clang + lld + llvm-dlltool).
+# llvm-mingw needs libgcc_eh.a / libgcc.a shims (copies of its libunwind.a and
+# libclang_rt.builtins-x86_64.a) in x86_64-w64-mingw32/lib; see README.
+linker = "x86_64-w64-mingw32-clang"
+rustflags = ["-C", "link-self-contained=no", "-C", "link-arg=-static"]

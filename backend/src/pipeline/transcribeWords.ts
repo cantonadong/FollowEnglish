@@ -1,9 +1,7 @@
 import { spawn } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import type { Word } from "./buildSentences.js";
-
-const MODEL_RELATIVE_FROM_JOB_DIR = "../../models/ggml-base.en.bin";
 
 /**
  * Runs ffmpeg's built-in `whisper` audio filter (whisper.cpp) against a 16kHz
@@ -31,8 +29,21 @@ export async function transcribeWords(params: {
   const destinationName = "words.json";
   const destinationPath = path.join(jobDir, destinationName);
 
+  const legacyModel = "../../models/ggml-base.en.bin";
+  const sharedModel = "../../../models/ggml-base.en.bin";
+  const model = await access(path.join(jobDir, legacyModel)).then(
+    () => legacyModel,
+    async () => {
+      try {
+        await access(path.join(jobDir, sharedModel));
+        return sharedModel;
+      } catch {
+        throw new Error("找不到语音识别模型 ggml-base.en.bin，请检查 models 文件夹。");
+      }
+    }
+  );
   const options = [
-    `model=${MODEL_RELATIVE_FROM_JOB_DIR}`,
+    `model=${model}`,
     `language=${language}`,
     "queue=30",
     "max_len=1",

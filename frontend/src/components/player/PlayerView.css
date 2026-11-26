@@ -1,6 +1,5 @@
 .player-view {
   display: flex;
-  gap: 16px;
   width: 100%;
   height: 100%;
   color: #1a1a1a;
@@ -92,7 +91,7 @@
     -1px 1px 0 #000,
     1px 1px 0 #000,
     0 2px 6px rgba(0, 0, 0, 0.8);
-  background: rgba(0, 0, 0, 0.35);
+  background: #000;
   padding: 2px 10px;
   border-radius: 4px;
   white-space: pre-wrap;
@@ -227,9 +226,32 @@
   text-align: center;
 }
 
+.player-view__divider {
+  flex: 0 0 16px;
+  display: grid;
+  place-items: center;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+}
+
+.player-view__divider::before {
+  content: "";
+  width: 2px;
+  height: 32px;
+  border-radius: 2px;
+  background: #c8c8cf;
+}
+
+.player-view__divider:hover::before,
+.player-view__divider:focus-visible::before {
+  background: #2458c6;
+}
+
 .player-view__sidebar {
   position: relative;
-  width: 300px;
+  box-sizing: border-box;
+  max-width: 70%;
   flex-shrink: 0;
   min-height: 0;
   background: #ffffff;
@@ -259,6 +281,12 @@
   color: #8a8a90;
 }
 
+.sentence-list:not(.sentence-list--empty) {
+  padding-block: 50cqh;
+  padding-inline: 3px;
+  overflow-anchor: none;
+}
+
 .sentence-list__hint {
   font-size: 12px;
   color: #aaaab0;
@@ -266,8 +294,8 @@
 
 .sentence-list__item {
   display: flex;
-  gap: 8px;
-  padding: 8px 10px;
+  gap: 5px;
+  padding: 8px 5px;
   border-radius: 6px;
   cursor: pointer;
   font-size: 13px;
@@ -333,8 +361,9 @@
   }
 }
 
-.sentence-list__container { position: relative; display: flex; flex: 1; min-height: 0; }
-.sentence-list__index-column { width: 24px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.sentence-list__container { position: relative; display: flex; flex: 1; min-height: 0; container-type: size; }
+.sentence-list__index-column { min-width: 22px; flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.sentence-list__index { border: 0; padding: 0; background: none; font-family: inherit; cursor: pointer; }
 .sentence-list__edit-button { width: 22px; height: 22px; padding: 0; display: grid; place-items: center; border: 1px solid #d9d9df; border-radius: 4px; background: #fff; color: #6b6b70; cursor: pointer; line-height: 1; opacity: 0; visibility: hidden; pointer-events: none; }
 .sentence-list__item:hover .sentence-list__edit-button,
 .sentence-list__item:focus-within .sentence-list__edit-button { opacity: 1; visibility: visible; pointer-events: auto; }
